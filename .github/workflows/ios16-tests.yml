@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.head_ref != 'diagnostic-v2.3.5'
     runs-on: macos-15-intel
     timeout-minutes: 75
     env:
@@ -21,6 +22,11 @@ jobs:
         working-directory: iPadn-iOS
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare diagnostic TestFlightKit when explicitly requested
+        if: github.ref_name == 'diagnostic-v2.3.5'
+        run: |
+          python3 scripts/prepare_testflight_sdk.py
+          python3 scripts/generate_project.py --with-testflight
       - name: Boot iOS 16.4
         run: |
           for attempt in 1 2 3; do

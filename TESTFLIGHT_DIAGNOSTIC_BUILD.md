@@ -33,3 +33,16 @@ for the original archive library. No authorization data or archive checks
 are fabricated. The scope is testing ordinary account authentication and
 collecting the redacted diagnostic logs. Full functionality requires the
 original compatible archive dependency and further validation.
+
+## Faster diagnostic iteration
+
+The device IPA in run 45988919931 built and passed packaging checks; subsequent
+simulator test compilation failed because CoreTests did not import TestFlightKit.
+The conditional import and explicit test target package dependency are added.
+Automatic PR builds on diagnostic-v2.3.5 now run offline formatter and existing
+static checks, compile and verify device IPAs, and upload artifacts. They skip the
+full simulator suite and separate iOS 16 compatibility job. Full testing remains
+available via manual workflow dispatch with run_tests enabled (and the separate
+iOS 16 workflow); no production release requirements are relaxed. Go and Rust
+dependency caches are keyed to the pinned inputs; SDK verification remains mandatory.
+Fast diagnostic builds are not release validation or proof of login success.

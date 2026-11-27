@@ -111,12 +111,17 @@ app_framework = add("ZIPFoundation/AppBuild", "PBXBuildFile", productRef=app_pac
 test_framework = add("ZIPFoundation/TestBuild", "PBXBuildFile", productRef=test_package)
 app_packages = [app_package]
 app_framework_items = [app_framework]
+test_packages = [test_package]
+test_framework_items = [test_framework]
 package_references = [package]
 if OPTIONS.with_testflight:
     tf_package = add("TestFlightKit/Local", "XCLocalSwiftPackageReference", relativePath="TestFlightKit")
     tf_product = add("TestFlightKit/App", "XCSwiftPackageProductDependency", package=tf_package, productName="TestFlightKit")
     app_packages.append(tf_product)
     app_framework_items.append(add("TestFlightKit/AppBuild", "PBXBuildFile", productRef=tf_product))
+    tf_test_product = add("TestFlightKit/Tests", "XCSwiftPackageProductDependency", package=tf_package, productName="TestFlightKit")
+    test_packages.append(tf_test_product)
+    test_framework_items.append(add("TestFlightKit/TestBuild", "PBXBuildFile", productRef=tf_test_product))
     package_references.append(tf_package)
 app_group = add("AppGroup", "PBXGroup", children=app_files, path="iPadn", sourceTree="<group>")
 fairplay_group = add("FairPlayGroup", "PBXGroup", children=fairplay_files, path="FairPlayCore", sourceTree="<group>")
@@ -133,7 +138,7 @@ assemble = add("AssembleWASM", "PBXShellScriptBuildPhase", buildActionMask="2147
                name="Verify local signing runtime", runOnlyForDeploymentPostprocessing="0", shellPath="/bin/bash",
                shellScript='set -euo pipefail\npython3 "$SRCROOT/scripts/assemble_runtime.py"\n', alwaysOutOfDate="1")
 tests_sources = add("TestsSources", "PBXSourcesBuildPhase", buildActionMask="2147483647", files=test_sources, runOnlyForDeploymentPostprocessing="0")
-tests_frameworks = add("TestsFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=[test_framework], runOnlyForDeploymentPostprocessing="0")
+tests_frameworks = add("TestsFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=test_framework_items, runOnlyForDeploymentPostprocessing="0")
 test_resources = []
 for path in sorted((ROOT / "iPadnTests/Fixtures").glob("*.p12")):
     relative = path.relative_to(ROOT / "iPadnTests").as_posix()
@@ -176,7 +181,7 @@ add("AppTarget", "PBXNativeTarget", buildConfigurationList=app_configs, buildPha
     buildRules=[], dependencies=[], name="iPadn", packageProductDependencies=app_packages, productName="iPadn",
     productReference=app_product, productType="com.apple.product-type.application")
 add("TestTarget", "PBXNativeTarget", buildConfigurationList=test_configs, buildPhases=[tests_sources, tests_frameworks, tests_resources],
-    buildRules=[], dependencies=[dependency], name="iPadnTests", packageProductDependencies=[test_package], productName="iPadnTests",
+    buildRules=[], dependencies=[dependency], name="iPadnTests", packageProductDependencies=test_packages, productName="iPadnTests",
     productReference=test_product, productType="com.apple.product-type.bundle.unit-test")
 ui_id = uid("UITestTarget")
 ui_product = add("UITestProduct", "PBXFileReference", explicitFileType="wrapper.cfbundle", includeInIndex="0", path="iPadnUITests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
