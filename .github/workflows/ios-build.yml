@@ -83,6 +83,22 @@ jobs:
           xcodebuild -showsdks
           mkdir -p build
 
+      - name: Cache Go dependencies and build objects
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/Library/Caches/go-build
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode27-go1.26.5-${{ hashFiles('iPadn-iOS/scripts/build_mac_pkg_bridge.sh', 'iPadn-iOS/scripts/ipatool-guest-timeout.patch', 'iPadn-iOS/MacPKGBridge/**') }}
+
+      - name: Cache Rust dependency downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('iPadn-iOS/NativeInstall/Cargo.lock', 'iPadn-iOS/NativeInstall/Cargo.toml') }}
+
       - name: Verify project and repository-local runtime
         run: |
           python3 scripts/assemble_runtime.py
@@ -92,6 +108,7 @@ jobs:
           python3 ../tools/run_record_store_checks.py
           swiftc iPadn/Views/DiagnosticRedactor.swift iPadn/Views/PackageOutputPolicy.swift ../tools/tests/fairplay_redaction_checks.swift -o build/fp_redact_check
           ./build/fp_redact_check
+          python3 scripts/verify_tf_diagnostics.py
 
       - name: Build unsigned device IPA
         env:
@@ -136,9 +153,14 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+      - name: Report diagnostic-only validation scope
+        if: github.event_name == 'pull_request' && github.head_ref == 'diagnostic-v2.3.5'
+        run: |
+          echo 'Diagnostic PR: device IPA and offline checks only; full simulator tests remain available with manual workflow dispatch.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build simulator test runner
         timeout-minutes: 20
-        if: github.event_name != 'workflow_dispatch' || (inputs.run_tests && inputs.ui_test_scope != 'duo')
+        if: (github.event_name != 'workflow_dispatch' && !(github.event_name == 'pull_request' && github.head_ref == 'diagnostic-v2.3.5')) || (github.event_name == 'workflow_dispatch' && inputs.run_tests && inputs.ui_test_scope != 'duo')
         run: |
           set -o pipefail
           killall -9 com.apple.CoreSimulator.CoreSimulatorService || true
@@ -152,7 +174,7 @@ jobs:
 
       - name: Run simulator tests
         timeout-minutes: 45
-        if: github.event_name != 'workflow_dispatch' || (inputs.run_tests && inputs.ui_test_scope != 'duo')
+        if: (github.event_name != 'workflow_dispatch' && !(github.event_name == 'pull_request' && github.head_ref == 'diagnostic-v2.3.5')) || (github.event_name == 'workflow_dispatch' && inputs.run_tests && inputs.ui_test_scope != 'duo')
         env:
           RUN_UI_TESTS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_tests }}
           UI_TEST_SCOPE: ${{ inputs.ui_test_scope || 'full' }}
@@ -219,7 +241,7 @@ jobs:
           retention-days: 14
 
       - name: Upload test summary
-        if: success() && (github.event_name != 'workflow_dispatch' || inputs.run_tests)
+        if: success() && ((github.event_name != 'workflow_dispatch' && !(github.event_name == 'pull_request' && github.head_ref == 'diagnostic-v2.3.5')) || (github.event_name == 'workflow_dispatch' && inputs.run_tests && inputs.ui_test_scope != 'duo'))
         uses: actions/upload-artifact@v4
         with:
           name: iPadn-test-summary

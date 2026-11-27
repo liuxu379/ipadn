@@ -236,8 +236,9 @@ public enum TFLogin {
         // account owns, so a foreign snapshot must be gone first.
         AccountScope.activate(dsid: accountDsid, log: log)
 
-        log("sign-in: import account into the mac identity")
-        try await mac.importAccount(account)
+        // The public AppleAuth SDK accepts the verified AccountSession directly
+        // in loginStoreWithPET. Do not synthesize an imported account or bypass 2FA.
+        log("sign-in: using verified account with public AppleAuth SDK")
 
         // The store exchange is called as instructed; its parse of the new
         // `/auth/v1/native/fast` response may throw, and the Set-Cookie headers have
@@ -430,6 +431,48 @@ public enum TFLogin {
 
     // MARK: - transport
 
+    // Diagnostic-only: never output arbitrary response strings, bodies, IDs or tokens.
+    static func safeAuthResponseSummary(_ data: Data) -> String {
+        if data.isEmpty { return "format=empty" }
+        if data.count > 262_144 { return "format=oversize" }
+        let object: Any
+        let format: String
+        if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) {
+            object = plist
+            format = "plist"
+        } else if let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) {
+            object = json
+            format = "json"
+        } else {
+            return "format=unparsed"
+        }
+        guard let root = object as? [String: Any] else {
+            return "format=\(format) shape=scalar-or-array"
+        }
+        let response = (root["Response"] as? [String: Any]) ?? root
+        let state = (response["Status"] as? [String: Any]) ?? response
+        var parts = ["format=\(format)", "shape=dict"]
+        // Log presence/categories only. Numeric and arbitrary server values stay private.
+        if let ec = state["ec"] as? NSNumber {
+            parts.append(ec.intValue == 0 ? "businessStatus=zero" : "businessStatus=nonzero")
+        } else if let ec = state["ec"] as? String {
+            parts.append(ec == "0" ? "businessStatus=zero" : "businessStatus=present")
+        } else {
+            parts.append("businessStatus=absent")
+        }
+        if let auth = state["au"] as? String {
+            let known = ["trustedDeviceSecondaryAuth", "secondaryAuth", "hsa2"]
+            parts.append("challenge=" + (known.contains(auth) ? auth : "other"))
+        } else {
+            parts.append("challenge=absent")
+        }
+        let phone = (response["phoneNumberVerification"] as? [String: Any]) ?? response
+        if let errors = (response["serviceErrors"] as? [Any]) ?? (phone["serviceErrors"] as? [Any]) {
+            parts.append("serviceErrors=\(errors.count)")
+        }
+        return parts.joined(separator: " ")
+    }
+
     /// Logs method/host/path/status only: request bodies carry credentials.
     ///
     /// For `/grandslam/` calls it also prints the identity headers Apple routes on —
@@ -458,19 +501,22 @@ public enum TFLogin {
             if path.contains("/grandslam/") {
                 let fields = request.allHTTPHeaderFields ?? [:]
                 let bodyBytes = request.httpBody?.count ?? -1
-                let ua = fields["User-Agent"] ?? "-"
-                let ci = fields["X-MMe-Client-Info"] ?? fields["X-Apple-Client-Info"] ?? "-"
-                let app = fields["X-Apple-Client-App-Name"] ?? "-"
-                let tz = fields["X-Apple-I-TimeZone"] ?? "-"
-                let rinfo = fields["X-Apple-I-MD-RINFO"] ?? "-"
-                let locale = fields["X-Apple-I-Locale"] ?? "-"
-                let lang = fields["Accept-Language"] ?? "-"
+                let ua = request.value(forHTTPHeaderField: "User-Agent") ?? "-"
+                let ci = request.value(forHTTPHeaderField: "X-MMe-Client-Info") ?? request.value(forHTTPHeaderField: "X-Apple-Client-Info") ?? "-"
+                let app = request.value(forHTTPHeaderField: "X-Apple-Client-App-Name") ?? "-"
+                let tz = request.value(forHTTPHeaderField: "X-Apple-I-TimeZone") ?? "-"
+                let rinfo = request.value(forHTTPHeaderField: "X-Apple-I-MD-RINFO") ?? "-"
+                let locale = request.value(forHTTPHeaderField: "X-Apple-I-Locale") ?? "-"
+                let lang = request.value(forHTTPHeaderField: "Accept-Language") ?? "-"
                 let names = fields.keys.sorted().joined(separator: ",")
                 log("    gs body=" + String(bodyBytes) + " headers=" + String(fields.count))
                 log("    gs ua=[" + ua + "]")
                 log("    gs ci=[" + ci + "] app=[" + app + "]")
                 log("    gs tz=[" + tz + "] rinfo=[" + rinfo + "] locale=[" + locale + "] lang=[" + lang + "]")
                 log("    gs names=" + names)
+                if host.lowercased() == "gsa.apple.com", method == "POST" {
+                    log("    diag-v1 gsa: " + safeAuthResponseSummary(data))
+                }
             }
 
             if host.lowercased().hasSuffix("apple.com") {
@@ -483,13 +529,22 @@ public enum TFLogin {
                 let is2FAConfirm = status == 200
                     && (path == "/auth/verify/phone/securitycode" || path.contains("validateCode"))
                 if is2FAConfirm {
+                    if host.lowercased() == "gsa.apple.com" {
+                        log("    diag-v1 verification HTTP 200; account session not yet established; " + safeAuthResponseSummary(data))
+                    }
                     diagnostics.mark2FAConfirmed()
                     // Drop web `/auth` cookies so the follow-up SRP handshake matches native curl
                     // transport, and give Apple's GSA backend a brief moment to propagate 2FA trust.
+                    var clearedCount = 0
                     for cookie in HTTPCookieStorage.shared.cookies ?? []
                     where cookie.domain.contains("gsa.apple.com") {
                         HTTPCookieStorage.shared.deleteCookie(cookie)
+                        clearedCount += 1
                     }
+                    let remainingCount = (HTTPCookieStorage.shared.cookies ?? []).filter {
+                        $0.domain.contains("gsa.apple.com")
+                    }.count
+                    log("    diag-v1 existing cookie cleanup: removed=\(clearedCount) remaining=\(remainingCount)")
                     try? await Task.sleep(nanoseconds: 800_000_000)
                 }
             }

@@ -3,6 +3,9 @@ import UIKit
 import ZIPFoundation
 import CryptoKit
 @testable import iPadn
+#if canImport(TestFlightKit)
+import TestFlightKit
+#endif
 
 final class CoreTests: XCTestCase {
     /// Assertions below check the Chinese copy: pin the language instead of

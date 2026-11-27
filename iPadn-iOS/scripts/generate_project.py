@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--development-language", default="en",
                     help="Only for -exportLocalizations; regenerating without it restores en.")
+parser.add_argument("--with-testflight", action="store_true", help="Link the pinned local TestFlightKit package.")
 OPTIONS = parser.parse_args()
 objects = {}
 
@@ -108,6 +109,20 @@ app_package = add("ZIPFoundation/App", "XCSwiftPackageProductDependency", packag
 test_package = add("ZIPFoundation/Tests", "XCSwiftPackageProductDependency", package=package, productName="ZIPFoundation")
 app_framework = add("ZIPFoundation/AppBuild", "PBXBuildFile", productRef=app_package)
 test_framework = add("ZIPFoundation/TestBuild", "PBXBuildFile", productRef=test_package)
+app_packages = [app_package]
+app_framework_items = [app_framework]
+test_packages = [test_package]
+test_framework_items = [test_framework]
+package_references = [package]
+if OPTIONS.with_testflight:
+    tf_package = add("TestFlightKit/Local", "XCLocalSwiftPackageReference", relativePath="TestFlightKit")
+    tf_product = add("TestFlightKit/App", "XCSwiftPackageProductDependency", package=tf_package, productName="TestFlightKit")
+    app_packages.append(tf_product)
+    app_framework_items.append(add("TestFlightKit/AppBuild", "PBXBuildFile", productRef=tf_product))
+    tf_test_product = add("TestFlightKit/Tests", "XCSwiftPackageProductDependency", package=tf_package, productName="TestFlightKit")
+    test_packages.append(tf_test_product)
+    test_framework_items.append(add("TestFlightKit/TestBuild", "PBXBuildFile", productRef=tf_test_product))
+    package_references.append(tf_package)
 app_group = add("AppGroup", "PBXGroup", children=app_files, path="iPadn", sourceTree="<group>")
 fairplay_group = add("FairPlayGroup", "PBXGroup", children=fairplay_files, path="FairPlayCore", sourceTree="<group>")
 test_group = add("TestGroup", "PBXGroup", children=test_files, path="iPadnTests", sourceTree="<group>")
@@ -115,7 +130,7 @@ products = add("Products", "PBXGroup", children=[app_product, test_product], nam
 root_group = add("MainGroup", "PBXGroup", children=[app_group, fairplay_group, test_group, products], sourceTree="<group>")
 app_sources = add("AppSources", "PBXSourcesBuildPhase", buildActionMask="2147483647", files=sources, runOnlyForDeploymentPostprocessing="0")
 app_resources = add("AppResources", "PBXResourcesBuildPhase", buildActionMask="2147483647", files=resources, runOnlyForDeploymentPostprocessing="0")
-app_frameworks = add("AppFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=[app_framework], runOnlyForDeploymentPostprocessing="0")
+app_frameworks = add("AppFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=app_framework_items, runOnlyForDeploymentPostprocessing="0")
 runtime_manifest_files = sorted(json.loads((ROOT / "vendor/SAPRuntime/manifest.json").read_text(encoding="utf-8"))["files"])
 assemble = add("AssembleWASM", "PBXShellScriptBuildPhase", buildActionMask="2147483647", files=[],
                inputPaths=["$(SRCROOT)/scripts/assemble_runtime.py", "$(SRCROOT)/vendor/SAPRuntime"],
@@ -123,7 +138,7 @@ assemble = add("AssembleWASM", "PBXShellScriptBuildPhase", buildActionMask="2147
                name="Verify local signing runtime", runOnlyForDeploymentPostprocessing="0", shellPath="/bin/bash",
                shellScript='set -euo pipefail\npython3 "$SRCROOT/scripts/assemble_runtime.py"\n', alwaysOutOfDate="1")
 tests_sources = add("TestsSources", "PBXSourcesBuildPhase", buildActionMask="2147483647", files=test_sources, runOnlyForDeploymentPostprocessing="0")
-tests_frameworks = add("TestsFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=[test_framework], runOnlyForDeploymentPostprocessing="0")
+tests_frameworks = add("TestsFrameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=test_framework_items, runOnlyForDeploymentPostprocessing="0")
 test_resources = []
 for path in sorted((ROOT / "iPadnTests/Fixtures").glob("*.p12")):
     relative = path.relative_to(ROOT / "iPadnTests").as_posix()
@@ -163,10 +178,10 @@ test_configs = configs("Tests", test_settings)
 proxy = add("TestProxy", "PBXContainerItemProxy", containerPortal=uid("Project"), proxyType="1", remoteGlobalIDString=app_id, remoteInfo="iPadn")
 dependency = add("TestDependency", "PBXTargetDependency", target=app_id, targetProxy=proxy)
 add("AppTarget", "PBXNativeTarget", buildConfigurationList=app_configs, buildPhases=[assemble, app_sources, app_frameworks, app_resources],
-    buildRules=[], dependencies=[], name="iPadn", packageProductDependencies=[app_package], productName="iPadn",
+    buildRules=[], dependencies=[], name="iPadn", packageProductDependencies=app_packages, productName="iPadn",
     productReference=app_product, productType="com.apple.product-type.application")
 add("TestTarget", "PBXNativeTarget", buildConfigurationList=test_configs, buildPhases=[tests_sources, tests_frameworks, tests_resources],
-    buildRules=[], dependencies=[dependency], name="iPadnTests", packageProductDependencies=[test_package], productName="iPadnTests",
+    buildRules=[], dependencies=[dependency], name="iPadnTests", packageProductDependencies=test_packages, productName="iPadnTests",
     productReference=test_product, productType="com.apple.product-type.bundle.unit-test")
 ui_id = uid("UITestTarget")
 ui_product = add("UITestProduct", "PBXFileReference", explicitFileType="wrapper.cfbundle", includeInIndex="0", path="iPadnUITests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
@@ -219,7 +234,7 @@ project_id = add("Project", "PBXProject", attributes={"BuildIndependentTargetsIn
     # while the Chinese source strings stay the keys of the string catalogs.
     buildConfigurationList=project_configs, compatibilityVersion="Xcode 14.0", developmentRegion=OPTIONS.development_language,
     hasScannedForEncodings="0", knownRegions=["zh-Hans", "en", "zh-Hant", "ja", "ko", "ru", "es", "fr", "de", "pt-BR", "ar", "Base"], mainGroup=root_group, productRefGroup=products,
-    projectDirPath="", projectRoot="", targets=[app_id, test_id, ui_id, extension_id], packageReferences=[package])
+    projectDirPath="", projectRoot="", targets=[app_id, test_id, ui_id, extension_id], packageReferences=package_references)
 
 def render(value, indent=0):
     tab = "\t" * indent

@@ -5,6 +5,8 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
   echo 'This script requires macOS with Xcode and the iOS SDK.' >&2
   exit 1
 fi
+python3 "$project_root/scripts/prepare_testflight_sdk.py"
+python3 "$project_root/scripts/generate_project.py" --with-testflight
 python3 "$project_root/scripts/assemble_runtime.py"
 # Mac App Store PKG support needs the Go/TCI bridge. Set IPADN_REQUIRE_MACPKG=1
 # (CI does) to fail instead of building an IPA without it.
@@ -39,6 +41,11 @@ if [ -d "$package_root/Payload/iPadn.app" ]; then
   rm -r "$package_root/Payload/iPadn.app"
 fi
 cp -R "$project_root/build/DerivedData/Build/Products/Release-iphoneos/iPadn.app" "$package_root/Payload/"
+# Preserve upstream notices for the linked SDK.
+sdk_notices="$package_root/Payload/iPadn.app/AppleAuthNotices"
+mkdir -p "$sdk_notices"
+cp "$project_root/vendor/AppleAuth/LICENSE" "$project_root/vendor/AppleAuth/THIRD_PARTY_NOTICES.md" "$sdk_notices/"
+cp -R "$project_root/vendor/AppleAuth/Licenses" "$sdk_notices/"
 if [ -n "$macpkg_flags" ]; then
   # GPL-2.0 Unicorn and MIT ipatool are linked into the executable.
   cp "$project_root/build/macpkg/Unicorn-GPL-2.0.txt" "$project_root/build/macpkg/ipatool-MIT.txt" \

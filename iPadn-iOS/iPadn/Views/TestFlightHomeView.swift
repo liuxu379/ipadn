@@ -2240,6 +2240,10 @@ final class TFHomeModel: ObservableObject {
     }
 
     func start(_ app: TFBetaApp, build targetBuild: TFPlatformBuild? = nil) {
+        guard !TFSINF.diagnosticOnly else {
+            rows[app.id] = failed("TestFlight 登录诊断版：下载功能暂不可用 / Downloads disabled")
+            return
+        }
         guard !(rows[app.id]?.isBusy ?? false) else { return }
         guard let session else {
             rows[app.id] = failed(AppText.text("请先登录后再下载"))
@@ -2719,6 +2723,10 @@ final class TFHomeModel: ObservableObject {
     /// Install through the single coordinator entry; `source: .testFlight` is display only.
     /// Note: `.save` share presentation is handled via SwiftUI `ShareSheet` inside `TFInstallSheet`.
     func install(_ app: TFBetaApp, method: InstallMethod, installation: InstallationService?) {
+        guard !TFSINF.diagnosticOnly else {
+            installNotes[app.id] = "TestFlight 登录诊断版：安装功能暂不可用 / Installation disabled"
+            return
+        }
         guard let package = productURL(for: app) else { return }
         let bundle = products[app.id] ?? details[app.id]?.bundleID ?? app.bundleID
         guard !bundle.isEmpty else { return }

@@ -1,5 +1,7 @@
 import Foundation
 
+#if !TF_LOGIN_DIAGNOSTIC_ONLY
+
 // C shims from the apple_auth archive (same symbols the probe links).
 @_silgen_name("tf_add_sinf")
 private func tf_add_sinf_c(_ ipa: UnsafePointer<CChar>?,
@@ -37,6 +39,7 @@ private func tf_last_error_c() -> UnsafePointer<CChar>?
 /// the app's own `SC_Info/Manifest.plist` (`SinfPaths`), or from `CFBundleExecutable`
 /// when that manifest is absent. The archive rewrite is the linked libzip shim.
 public enum TFSINF {
+    public static var diagnosticOnly: Bool { false }
 
     public struct Report: Sendable {
         public var paths: [String] = []
@@ -460,3 +463,36 @@ public enum TFSINF {
         return String(cString: pointer)
     }
 }
+
+
+#else
+// The upstream public SDK lacks the private archive shim. Do not fake successful
+// archive reads or verification; the diagnostic build supports login only.
+public enum TFSINF {
+    public struct Report: Sendable {
+        public var paths: [String] = []
+        public var sizes: [Int] = []
+        public var members: Int = 0
+        public var addedCount: Int = 0
+    }
+
+    public static var diagnosticOnly: Bool { true }
+
+    public static func install(metadata: Data, ipa: URL) throws -> Report {
+        throw TFError.malformed("TestFlight diagnostic build: archive processing unavailable")
+    }
+
+    public static func verifyArchive(ipa: URL) throws -> Int {
+        throw TFError.malformed("TestFlight diagnostic build: archive verification unavailable")
+    }
+
+    public static func memberCount(ipa: URL) -> Int { -1 }
+    public static func members(ipa: URL) -> [String] { [] }
+    public static func bundleID(ipa: URL) -> String? { nil }
+    public static func encryptedMachOCount(ipa: URL, limit: Int = 96 << 20,
+                                          skipped: inout [String]) -> Int {
+        skipped.append("diagnostic-build: archive inspection unavailable")
+        return -1
+    }
+}
+#endif
