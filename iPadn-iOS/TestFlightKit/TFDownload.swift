@@ -112,6 +112,9 @@ public enum TFDownload {
                            onForegroundFallback: (@Sendable () -> Void)? = nil,
                            refresh: (@Sendable () async -> Data?)? = nil,
                            log: @escaping @Sendable (String) -> Void) async throws -> Report {
+        guard !TFSINF.diagnosticOnly else {
+            throw TFError.malformed("TestFlight diagnostic build: downloads disabled")
+        }
         let root = try buildDirectory(bundle: bundle, buildID: buildID)
         let work = root.appendingPathComponent(".work", isDirectory: true)
         try? FileManager.default.removeItem(at: work)

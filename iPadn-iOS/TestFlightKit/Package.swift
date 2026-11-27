@@ -9,6 +9,7 @@ let package = Package(
     targets: [
         .target(name: "TestFlightKit",
                 dependencies: [.product(name: "AppleAuth", package: "AppleAuth")],
-                path: ".", exclude: ["Package.swift"])
+                path: ".", exclude: ["Package.swift"],
+                swiftSettings: [.define("TF_LOGIN_DIAGNOSTIC_ONLY")])
     ]
 )
