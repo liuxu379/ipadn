@@ -236,8 +236,9 @@ public enum TFLogin {
         // account owns, so a foreign snapshot must be gone first.
         AccountScope.activate(dsid: accountDsid, log: log)
 
-        log("sign-in: import account into the mac identity")
-        try await mac.importAccount(account)
+        // The public AppleAuth SDK accepts the verified AccountSession directly
+        // in loginStoreWithPET. Do not synthesize an imported account or bypass 2FA.
+        log("sign-in: using verified account with public AppleAuth SDK")
 
         // The store exchange is called as instructed; its parse of the new
         // `/auth/v1/native/fast` response may throw, and the Set-Cookie headers have
